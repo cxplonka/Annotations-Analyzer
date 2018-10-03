@@ -1,5 +1,6 @@
 package com.analyzer.swing;
 
+import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -9,23 +10,30 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.NoninvertibleTransformException;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.List;
+import java.util.Optional;
 
 import javax.imageio.ImageIO;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 
+import org.apache.commons.collections4.CollectionUtils;
+
 import com.analyzer.util.AffineUtils;
+import com.google.cloud.vision.v1.AnnotateImageResponse;
+import com.google.cloud.vision.v1.BoundingPoly;
+import com.google.cloud.vision.v1.EntityAnnotation;
+import com.google.cloud.vision.v1.Vertex;
 import com.scansoft.jaxb.Document;
 import com.scansoft.jaxb.PageType;
 
 /**
  * The Class ZoomableImagePanel.
- *
- * @author Christian Plonka (cplonka81@gmail.com)
  */
 public class ZoomableImagePanel extends JPanel {
 
@@ -53,6 +61,9 @@ public class ZoomableImagePanel extends JPanel {
 	/** The current worker. */
 	private SwingWorker<BufferedImage, Void> currentWorker;
 
+	/** The annotations. */
+	AnnotateImageResponse annotations;
+
 	/**
 	 * Instantiates a new zoomable image panel.
 	 */
@@ -72,7 +83,7 @@ public class ZoomableImagePanel extends JPanel {
 	 */
 	/*
 	 * (non-Javadoc)
-	 * 
+	 *
 	 * @see javax.swing.JComponent#paint(java.awt.Graphics)
 	 */
 	@Override
@@ -100,9 +111,62 @@ public class ZoomableImagePanel extends JPanel {
 			imageTransform.concatenate(uiTransform);
 			g2d.drawImage(image, imageTransform, this);
 
-			//
-			final PageType page = doc.getPage().get(currentIdx);
+			// draw omnipage annotations
+			if (doc != null) {
+				drawAnnotations(g2d, doc.getPage().get(currentIdx));
+			} else if (annotations != null) // google text recognition
+			{
+				drawAnnotations(g2d);
+			}
 		}
+	}
+
+	/**
+	 * Draw annotations.
+	 *
+	 * @param g2d the g 2 d
+	 */
+	private void drawAnnotations(Graphics2D g2d) {
+		if (CollectionUtils.isNotEmpty(annotations.getTextAnnotationsList())) {
+			// first element is full text annotation
+			final List<EntityAnnotation> textAnnotations = annotations.getTextAnnotationsList();
+			for (int j = 0; j < textAnnotations.size(); j++) {
+				final EntityAnnotation an = textAnnotations.get(j);
+
+				//
+				if (j == 0) {
+					int y = 0;
+					for (final String line : an.getDescription().split("\n")) {
+						g2d.drawString(line, 10, y += g2d.getFontMetrics().getHeight());
+					}
+					g2d.setColor(Color.RED);
+				}
+
+				final Optional<List<Vertex>> vertices = Optional.ofNullable(an.getBoundingPoly())
+						.map(BoundingPoly::getVerticesList);
+
+				if (vertices.isPresent()) {
+					for (int i = 0; i < vertices.get().size(); i++) {
+						final Vertex from = vertices.get().get(i);
+						final Vertex to = vertices.get().get((i + 1) % vertices.get().size());
+
+						final Point2D p0 = imageTransform.transform(new Point2D.Float(from.getX(), from.getY()), null);
+						final Point2D p1 = imageTransform.transform(new Point2D.Float(to.getX(), to.getY()), null);
+
+						g2d.drawLine((int) p0.getX(), (int) p0.getY(), (int) p1.getX(), (int) p1.getY());
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Draw annotations.
+	 *
+	 * @param g2d  the g 2 d
+	 * @param page the page
+	 */
+	private void drawAnnotations(Graphics2D g2d, PageType page) {
 	}
 
 	/**
@@ -117,6 +181,21 @@ public class ZoomableImagePanel extends JPanel {
 		} else {
 			throw new RuntimeException("Document has no pages.");
 		}
+	}
+
+	public void setImageAnnotations(AnnotateImageResponse annotations, File imageFile) {
+		this.annotations = annotations;
+		if (currentWorker != null) {
+			currentWorker.cancel(true);
+		}
+		//
+		uiTransform.setToIdentity();
+		image = null;
+		//
+		currentWorker = new ImageLoadWorker(imageFile);
+		currentWorker.execute();
+		//
+		repaint();
 	}
 
 	/**
@@ -164,7 +243,7 @@ public class ZoomableImagePanel extends JPanel {
 		 */
 		/*
 		 * (non-Javadoc)
-		 * 
+		 *
 		 * @see
 		 * java.awt.event.MouseAdapter#mouseWheelMoved(java.awt.event.MouseWheelEvent)
 		 */
@@ -260,7 +339,7 @@ public class ZoomableImagePanel extends JPanel {
 
 		/*
 		 * (non-Javadoc)
-		 * 
+		 *
 		 * @see javax.swing.SwingWorker#doInBackground()
 		 */
 		@Override
@@ -270,7 +349,7 @@ public class ZoomableImagePanel extends JPanel {
 
 		/*
 		 * (non-Javadoc)
-		 * 
+		 *
 		 * @see javax.swing.SwingWorker#done()
 		 */
 		@Override

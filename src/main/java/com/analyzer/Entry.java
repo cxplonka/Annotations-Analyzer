@@ -12,8 +12,6 @@ import com.analyzer.swing.AnalyzerJFrame;
 
 /**
  * @author cplonka
- * 
- * @author Christian Plonka (cplonka81@gmail.com)
  */
 public class Entry {
 

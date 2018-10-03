@@ -15,8 +15,6 @@ import com.scansoft.jaxb.Document;
 
 /**
  * The Class OmniPageXMLParser.
- * 
- * @author Christian Plonka (cplonka81@gmail.com)
  */
 @SuppressWarnings("restriction")
 public class OmniPageXMLParser {
