@@ -1,1 +1,1 @@
-# OMNIPAGE-XML-Analyzer
+# Annotations-Analyzer
